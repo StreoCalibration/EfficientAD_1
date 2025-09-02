@@ -1,0 +1,31 @@
+# EfficientAD Configuration File
+
+model:
+  name: efficient_ad
+  model_size: S  # S or M
+
+# Dataset configuration
+data:
+  source: synthetic  # synthetic or real
+  # For real data:
+  # path: ./data/mvtec_ad
+  # category: bottle
+  
+  image_size: [256, 256]
+  num_samples: 1000  # Only for synthetic data
+  train_batch_size: 1  # Paper uses batch size 1
+  eval_batch_size: 32
+
+# Training configuration
+trainer:
+  accelerator: cpu  # cpu or cuda
+  devices: 1
+  max_epochs: 1
+
+# Loss weights
+st_weight: 1.0      # Student-Teacher loss weight
+ae_weight: 1.0      # Student-Autoencoder loss weight  
+penalty_weight: 1.0 # Pretraining penalty weight
+
+# Optimizer
+learning_rate: 0.0001

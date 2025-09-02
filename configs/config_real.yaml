@@ -1,0 +1,29 @@
+# EfficientAD Configuration for Real Data (MVTec AD)
+
+model:
+  name: efficient_ad
+  model_size: M  # M for better performance on real data
+
+# Dataset configuration  
+data:
+  source: real
+  path: ./data/mvtec_ad
+  category: bottle  # MVTec AD category
+  
+  image_size: [256, 256]
+  train_batch_size: 1  # Paper uses batch size 1
+  eval_batch_size: 32
+
+# Training configuration
+trainer:
+  accelerator: cuda  # Use GPU for real data training
+  devices: 1
+  max_epochs: 100  # More epochs for real data
+
+# Loss weights
+st_weight: 1.0      # Student-Teacher loss weight
+ae_weight: 1.0      # Student-Autoencoder loss weight
+penalty_weight: 1.0 # Pretraining penalty weight
+
+# Optimizer
+learning_rate: 0.0001
