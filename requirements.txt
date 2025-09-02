@@ -1,11 +1,26 @@
-torch
-torchvision
-pytorch-lightning
-opencv-python-headless
-numpy
-pyyaml
-tqdm
-pillow
-matplotlib
-scikit-learn
-timm
+# Deep Learning Framework
+torch==2.7.1+cu118
+torchvision==0.22.1+cu118
+pytorch-lightning==2.5.4
+
+# Computer Vision & Image Processing
+opencv-python-headless==4.12.0.88
+pillow==11.3.0
+timm==1.0.19
+
+# Data Science & ML
+numpy==2.2.6
+scikit-learn==1.7.1
+matplotlib==3.10.6
+
+# Utilities
+pyyaml==6.0.2
+tqdm==4.67.1
+
+# Logging & Monitoring
+tensorboard==2.20.0
+tensorboardX==2.6.4
+
+# Additional Dependencies
+torchmetrics==1.8.1
+requests==2.32.5

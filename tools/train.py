@@ -116,7 +116,7 @@ def main():
         enable_progress_bar=True,
         log_every_n_steps=10,
         val_check_interval=1.0,
-        deterministic=True
+        deterministic=False  # Set to False to avoid CUDA kthvalue issues
     )
     
     # Resume from checkpoint if specified
