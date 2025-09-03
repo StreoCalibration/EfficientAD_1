@@ -7,9 +7,9 @@ from sklearn.metrics import roc_auc_score
 import numpy as np
 from typing import Dict, Any, Optional, Tuple
 
-from .torch_model import EfficientADModel
-from ..utils.loss import EfficientADLoss
-from ..data.provider import DatasetProvider
+from src.models.torch_model import EfficientADModel
+from src.utils.loss import EfficientADLoss
+from src.data.provider import DatasetProvider
 
 
 class EfficientADLightning(pl.LightningModule):
