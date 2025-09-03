@@ -94,18 +94,19 @@ def main():
     # Callbacks
     checkpoint_callback = ModelCheckpoint(
         dirpath=logger.log_dir + '/checkpoints',
-        filename='efficient_ad-{epoch:02d}',
-        monitor='train/total_loss',
-        mode='min',
+        filename='efficient_ad-{epoch:02d}-{val/auroc:.3f}',
+        monitor='val/auroc',
+        mode='max',
         save_top_k=3,
         save_last=True
     )
     
     early_stop_callback = EarlyStopping(
-        monitor='train/total_loss',
-        patience=10,
-        mode='min',
-        verbose=True
+        monitor='val/auroc',
+        patience=20,
+        mode='max',
+        verbose=True,
+        min_delta=0.001
     )
     
     # --- 가속기 자동 감지 로직 추가 ---
