@@ -9,6 +9,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -107,10 +108,18 @@ def main():
         verbose=True
     )
     
+    # --- 가속기 자동 감지 로직 추가 ---
+    # 설정 파일 값을 우선적으로 사용하되, cuda가 불가능할 경우 cpu로 자동 전환
+    accelerator = trainer_config.get('accelerator', 'auto')
+    if accelerator == 'cuda' and not torch.cuda.is_available():
+        print("Warning: CUDA is not available, switching to CPU.")
+        accelerator = 'cpu'
+    # ------------------------------------
+    
     # Create trainer
     trainer = pl.Trainer(
         max_epochs=trainer_config['max_epochs'],
-        accelerator=trainer_config['accelerator'],
+        accelerator=accelerator,  # 자동 감지된 가속기 사용
         devices=trainer_config.get('devices', 1),
         logger=logger,
         callbacks=[checkpoint_callback, early_stop_callback],
