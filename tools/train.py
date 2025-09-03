@@ -94,17 +94,17 @@ def main():
     # Callbacks
     checkpoint_callback = ModelCheckpoint(
         dirpath=logger.log_dir + '/checkpoints',
-        filename='efficient_ad-{epoch:02d}-{val/auroc:.3f}',
-        monitor='val/auroc',
-        mode='max',
+        filename='efficient_ad-{epoch:02d}',
+        monitor='train/total_loss',
+        mode='min',
         save_top_k=3,
         save_last=True
     )
     
     early_stop_callback = EarlyStopping(
-        monitor='val/auroc',
+        monitor='train/total_loss',
         patience=10,
-        mode='max',
+        mode='min',
         verbose=True
     )
     

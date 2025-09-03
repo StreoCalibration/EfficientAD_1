@@ -52,6 +52,7 @@ class EfficientADLightning(pl.LightningModule):
         
         # For validation metrics
         self.validation_outputs = []
+        self.test_outputs = []
     
     def forward(self, x):
         return self.model(x)
@@ -140,6 +141,69 @@ class EfficientADLightning(pl.LightningModule):
         
         # Clear outputs
         self.validation_outputs.clear()
+
+    def test_step(self, batch, batch_idx):
+        """Test step with anomaly detection evaluation"""
+        if len(batch) == 3:
+            # Synthetic data with masks
+            images, labels, masks = batch
+        else:
+            # Real data without masks
+            images, labels = batch
+            masks = None
+        
+        # Compute anomaly maps
+        with torch.no_grad():
+            anomaly_maps = self.model.compute_anomaly_map(images, self.image_size)
+        
+        # Store outputs for epoch-end metrics
+        self.test_outputs.append({
+            'anomaly_maps': anomaly_maps.cpu(),
+            'labels': labels.cpu(),
+            'masks': masks.cpu() if masks is not None else None
+        })
+        
+        return {'anomaly_maps': anomaly_maps, 'labels': labels}
+
+    def on_test_epoch_end(self):
+        """Compute test metrics at epoch end"""
+        if not self.test_outputs:
+            return
+        
+        # Concatenate all outputs
+        all_maps = torch.cat([x['anomaly_maps'] for x in self.test_outputs])
+        all_labels = torch.cat([x['labels'] for x in self.test_outputs])
+        
+        # Compute image-level AUROC
+        image_scores = torch.max(all_maps.view(all_maps.size(0), -1), dim=1)[0]
+        
+        if len(torch.unique(all_labels)) > 1:  # Need both classes for AUROC
+            auroc = roc_auc_score(all_labels.numpy(), image_scores.numpy())
+            self.log('test/auroc', auroc, prog_bar=True)
+        
+        # Compute pixel-level metrics if masks available
+        all_masks = [x['masks'] for x in self.test_outputs if x['masks'] is not None]
+        if all_masks:
+            all_masks = torch.cat(all_masks)
+            # Resize anomaly maps to mask size if needed
+            if all_maps.shape[-2:] != all_masks.shape[-2:]:
+                all_maps = F.interpolate(
+                    all_maps, 
+                    size=all_masks.shape[-2:], 
+                    mode='bilinear', 
+                    align_corners=False
+                )
+            
+            # Flatten for pixel-level evaluation
+            pixel_scores = all_maps.view(-1).numpy()
+            pixel_labels = all_masks.view(-1).numpy()
+            
+            if len(np.unique(pixel_labels)) > 1:
+                pixel_auroc = roc_auc_score(pixel_labels, pixel_scores)
+                self.log('test/pixel_auroc', pixel_auroc)
+        
+        # Clear outputs
+        self.test_outputs.clear()
     
     def configure_optimizers(self):
         """Configure Adam optimizer"""
