@@ -1,0 +1,29 @@
+# EfficientAD Configuration for Custom Data
+
+model:
+  name: efficient_ad
+  model_size: M  # 데이터 특성에 맞게 S 또는 M 선택
+
+# Dataset configuration
+data:
+  source: real  # 'real' 데이터 소스를 그대로 사용
+  path: ./data/KY  # 1단계에서 압축 해제한 데이터 폴더 경로
+  category: KY             # 데이터셋을 식별할 임의의 이름
+  
+  image_size: [128, 128]         # 이미지 크기 지정
+  train_batch_size: 1
+  eval_batch_size: 32
+
+# Training configuration
+trainer:
+  accelerator: cuda
+  devices: 1
+  max_epochs: 100 # 데이터 양에 따라 조절
+
+# Loss weights
+st_weight: 1.0
+ae_weight: 1.0
+penalty_weight: 1.0
+
+# Optimizer
+learning_rate: 0.0001
