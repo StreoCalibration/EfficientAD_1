@@ -89,6 +89,16 @@ class EfficientADLightning(pl.LightningModule):
             images, labels = batch
             masks = None
         
+        # Forward pass through model
+        outputs = self.model(images)
+        
+        # Generate synthetic ImageNette batch for penalty (same as training)
+        imagenet_batch = self._generate_imagenet_batch(images.shape[0])
+        
+        # Compute validation loss
+        loss_dict = self.loss_fn(outputs, imagenet_batch, self.model.student)
+        self.log('val/total_loss', loss_dict['total_loss'], prog_bar=True)
+        
         # Compute anomaly maps
         with torch.no_grad():
             anomaly_maps = self.model.compute_anomaly_map(images, self.image_size)
@@ -100,7 +110,7 @@ class EfficientADLightning(pl.LightningModule):
             'masks': masks.cpu() if masks is not None else None
         })
         
-        return {'anomaly_maps': anomaly_maps, 'labels': labels}
+        return {'val_loss': loss_dict['total_loss'], 'anomaly_maps': anomaly_maps, 'labels': labels}
     
     def on_validation_epoch_end(self):
         """Compute validation metrics at epoch end"""
