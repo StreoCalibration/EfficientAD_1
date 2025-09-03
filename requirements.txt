@@ -1,6 +1,6 @@
 # Deep Learning Framework
-torch==2.7.1+cu118
-torchvision==0.22.1+cu118
+torch
+torchvision
 pytorch-lightning==2.5.4
 
 # Computer Vision & Image Processing
