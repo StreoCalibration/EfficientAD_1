@@ -7,7 +7,7 @@ model:
 # Dataset configuration
 data:
   source: real  # 'real' 데이터 소스를 그대로 사용
-  path: ./data/KY  # 1단계에서 압축 해제한 데이터 폴더 경로
+  path: ./data  # 1단계에서 압축 해제한 데이터 폴더 경로
   category: KY             # 데이터셋을 식별할 임의의 이름
   
   image_size: [128, 128]         # 이미지 크기 지정
