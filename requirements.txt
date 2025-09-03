@@ -1,6 +1,4 @@
 # Deep Learning Framework
-torch
-torchvision
 pytorch-lightning==2.5.4
 
 # Computer Vision & Image Processing
