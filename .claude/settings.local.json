@@ -7,7 +7,8 @@
       "Bash(dir:*)",
       "Bash(nvidia-smi:*)",
       "Bash(pip uninstall:*)",
-      "Bash(pip freeze)"
+      "Bash(pip freeze)",
+      "Read(Z:\\Data\\1_Work\\Zeta\\20250903_Training\\train/**)"
     ],
     "deny": [],
     "ask": []
