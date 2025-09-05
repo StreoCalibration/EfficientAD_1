@@ -18,7 +18,7 @@ data:
 trainer:
   accelerator: cuda
   devices: 1
-  max_epochs: 1 # 데이터 양에 따라 조절
+  max_epochs: 100 # 데이터 양에 따라 조절
 
 # Loss weights
 st_weight: 1.0
