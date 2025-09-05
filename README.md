@@ -40,7 +40,7 @@ EfficientAD_1/
 
 ```bash
 # 합성 데이터로 훈련
-python tools/train.py --config configs/config.yaml
+python tools/train.py --config configs/config_real_KY.yaml
 
 # 합성 데이터로 추론 테스트
 python tools/inference.py \

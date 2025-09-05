@@ -10,7 +10,7 @@ data:
   path: ./data  # 1단계에서 압축 해제한 데이터 폴더 경로
   category: KY             # 데이터셋을 식별할 임의의 이름
   
-  image_size: [128, 128]         # 이미지 크기 지정
+  image_size: [224, 224]         # 이미지 크기 지정
   train_batch_size: 1
   eval_batch_size: 32
 
@@ -18,7 +18,7 @@ data:
 trainer:
   accelerator: cuda
   devices: 1
-  max_epochs: 100 # 데이터 양에 따라 조절
+  max_epochs: 1 # 데이터 양에 따라 조절
 
 # Loss weights
 st_weight: 1.0

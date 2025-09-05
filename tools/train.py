@@ -74,12 +74,11 @@ def main():
         ae_weight=config.get('ae_weight', 1.0),
         penalty_weight=config.get('penalty_weight', 1.0),
         dataset_provider=dataset_provider,
-        image_size=tuple(config['data']['image_size'])
+        image_size=tuple(config['data']['image_size']),
+        in_channels=9  # 9채널 입력 설정
     )
     
-    # Create data loaders
-    train_loader = dataset_provider.get_train_dataloader()
-    val_loader = dataset_provider.get_val_dataloader()
+    # 데이터 로더는 LightningDataModule에서 관리합니다.
     
     # Setup logging and checkpoints
     data_source = config['data']['source']
@@ -143,17 +142,15 @@ def main():
     
     trainer.fit(
         model=model,
-        train_dataloaders=train_loader,
-        val_dataloaders=val_loader,
+        datamodule=dataset_provider,
         ckpt_path=ckpt_path
     )
     
     # Test model on best checkpoint
     print("\nTesting model on best checkpoint...")
-    test_loader = dataset_provider.get_test_dataloader()
     trainer.test(
         model=model,
-        dataloaders=test_loader,
+        datamodule=dataset_provider,
         ckpt_path='best'
     )
     

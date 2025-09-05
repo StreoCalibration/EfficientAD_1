@@ -1,263 +1,114 @@
 import pytorch_lightning as pl
 import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
+from typing import Optional, Tuple
 from sklearn.metrics import roc_auc_score
-import numpy as np
-from typing import Dict, Any, Optional, Tuple
 
-from src.models.torch_model import EfficientADModel
-from src.utils.loss import EfficientADLoss
-from src.data.provider import DatasetProvider
-
+from src.models.torch_model import EfficientAD
 
 class EfficientADLightning(pl.LightningModule):
-    """PyTorch Lightning wrapper for EfficientAD model"""
-    
+    """EfficientAD 모델을 위한 PyTorch Lightning 래퍼"""
     def __init__(self,
-                 model_size: str = 'S',
+                 model_size: str = 's',
                  learning_rate: float = 1e-4,
                  st_weight: float = 1.0,
                  ae_weight: float = 1.0,
-                 penalty_weight: float = 1.0,
-                 dataset_provider: Optional[DatasetProvider] = None,
+                 penalty_weight: float = 1.0, # 현재 구현에서는 사용되지 않음
+                 dataset_provider: Optional[pl.LightningDataModule] = None,
                  image_size: Tuple[int, int] = (256, 256),
-                 **kwargs):
+                 in_channels: int = 3):
         super().__init__()
+        # 하이퍼파라미터를 저장합니다. dataset_provider는 저장하지 않습니다.
         self.save_hyperparameters(ignore=['dataset_provider'])
         
-        # Initialize model
-        self.model = EfficientADModel(model_size=model_size)
+        # EfficientAD 모델 초기화
+        self.model = EfficientAD(model_size, in_channels=in_channels)
         
-        # Initialize loss
-        self.loss_fn = EfficientADLoss(
-            st_weight=st_weight,
-            ae_weight=ae_weight, 
-            penalty_weight=penalty_weight
-        )
+        # 손실 함수 정의
+        self.loss_st = torch.nn.MSELoss()
+        self.loss_ae = torch.nn.MSELoss()
         
-        # Store dataset provider
         self.dataset_provider = dataset_provider
         self.image_size = image_size
-        
-        # ImageNette data for pretraining penalty
-        self.imagenet_transform = transforms.Compose([
-            transforms.Resize(image_size),
-            transforms.RandomCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                               std=[0.229, 0.224, 0.225])
-        ])
-        
-        # For validation metrics
+
+        # 검증 및 테스트 결과를 저장하기 위한 리스트
         self.validation_outputs = []
         self.test_outputs = []
-    
+
     def forward(self, x):
         return self.model(x)
-    
+
     def training_step(self, batch, batch_idx):
-        """Training step with synthetic ImageNette penalty"""
+        # 배치에서 이미지만 추출
+        images = batch[0] if isinstance(batch, list) and len(batch) > 0 else batch
+
+        # 모델 forward pass
+        teacher_output, student_output, ae_output = self.model(images)
+        
+        # 손실 계산
+        st_loss = self.loss_st(student_output, teacher_output)
+        ae_loss = self.loss_ae(ae_output, images)
+        
+        total_loss = self.hparams.st_weight * st_loss + self.hparams.ae_weight * ae_loss
+        
+        # 손실 로깅
+        self.log('train/total_loss', total_loss, prog_bar=True)
+        self.log('train/st_loss', st_loss)
+        self.log('train/ae_loss', ae_loss)
+        
+        return total_loss
+
+    def validation_step(self, batch, batch_idx):
         images, labels = batch
         
-        # Forward pass through model
-        outputs = self.model(images)
+        teacher_output, student_output, ae_output = self.model(images)
         
-        # Generate synthetic ImageNette batch for penalty
-        # In practice, you would load actual ImageNette data
-        imagenet_batch = self._generate_imagenet_batch(images.shape[0])
+        st_loss = self.loss_st(student_output, teacher_output)
+        ae_loss = self.loss_ae(ae_output, images)
         
-        # Compute losses
-        loss_dict = self.loss_fn(outputs, imagenet_batch, self.model.student)
+        total_loss = self.hparams.st_weight * st_loss + self.hparams.ae_weight * ae_loss
+        self.log('val/total_loss', total_loss, prog_bar=True)
+
+        # 이상치 점수 계산
+        anomaly_map = torch.mean(torch.pow(student_output - teacher_output, 2), dim=1, keepdim=True)
+        score = torch.max(anomaly_map.view(anomaly_map.size(0), -1), dim=1)[0]
         
-        # Log losses
-        self.log('train/total_loss', loss_dict['total_loss'], prog_bar=True)
-        self.log('train/st_loss', loss_dict['st_loss'])
-        self.log('train/ae_loss', loss_dict['ae_loss'])
-        self.log('train/penalty_loss', loss_dict['penalty_loss'])
-        
-        return loss_dict['total_loss']
-    
-    def validation_step(self, batch, batch_idx):
-        """Validation step with anomaly detection evaluation"""
-        if len(batch) == 3:
-            # Synthetic data with masks
-            images, labels, masks = batch
-        else:
-            # Real data without masks
-            images, labels = batch
-            masks = None
-        
-        # Forward pass through model
-        outputs = self.model(images)
-        
-        # Generate synthetic ImageNette batch for penalty (same as training)
-        imagenet_batch = self._generate_imagenet_batch(images.shape[0])
-        
-        # Compute validation loss
-        loss_dict = self.loss_fn(outputs, imagenet_batch, self.model.student)
-        self.log('val/total_loss', loss_dict['total_loss'], prog_bar=True)
-        
-        # Compute anomaly maps
-        with torch.no_grad():
-            anomaly_maps = self.model.compute_anomaly_map(images, self.image_size)
-        
-        # Store outputs for epoch-end metrics
-        self.validation_outputs.append({
-            'anomaly_maps': anomaly_maps.cpu(),
-            'labels': labels.cpu(),
-            'masks': masks.cpu() if masks is not None else None
-        })
-        
-        return {'val_loss': loss_dict['total_loss'], 'anomaly_maps': anomaly_maps, 'labels': labels}
-    
+        self.validation_outputs.append({'labels': labels.cpu(), 'scores': score.cpu()})
+        return {'val_loss': total_loss}
+
     def on_validation_epoch_end(self):
-        """Compute validation metrics at epoch end"""
         if not self.validation_outputs:
             return
+            
+        labels = torch.cat([x['labels'] for x in self.validation_outputs])
+        scores = torch.cat([x['scores'] for x in self.validation_outputs])
         
-        # Concatenate all outputs
-        all_maps = torch.cat([x['anomaly_maps'] for x in self.validation_outputs])
-        all_labels = torch.cat([x['labels'] for x in self.validation_outputs])
-        
-        # Compute image-level AUROC
-        image_scores = torch.max(all_maps.view(all_maps.size(0), -1), dim=1)[0]
-        
-        if len(torch.unique(all_labels)) > 1:  # Need both classes for AUROC
-            auroc = roc_auc_score(all_labels.numpy(), image_scores.numpy())
+        # AUROC 계산 (라벨이 두 종류 이상일 때)
+        if len(torch.unique(labels)) > 1:
+            auroc = roc_auc_score(labels.numpy(), scores.numpy())
             self.log('val/auroc', auroc, prog_bar=True)
         
-        # Compute pixel-level metrics if masks available
-        all_masks = [x['masks'] for x in self.validation_outputs if x['masks'] is not None]
-        if all_masks:
-            all_masks = torch.cat(all_masks)
-            # Resize anomaly maps to mask size if needed
-            if all_maps.shape[-2:] != all_masks.shape[-2:]:
-                all_maps = F.interpolate(
-                    all_maps, 
-                    size=all_masks.shape[-2:], 
-                    mode='bilinear', 
-                    align_corners=False
-                )
-            
-            # Flatten for pixel-level evaluation
-            pixel_scores = all_maps.view(-1).numpy()
-            pixel_labels = all_masks.view(-1).numpy()
-            
-            if len(np.unique(pixel_labels)) > 1:
-                pixel_auroc = roc_auc_score(pixel_labels, pixel_scores)
-                self.log('val/pixel_auroc', pixel_auroc)
-        
-        # Clear outputs
         self.validation_outputs.clear()
 
     def test_step(self, batch, batch_idx):
-        """Test step with anomaly detection evaluation"""
-        if len(batch) == 3:
-            # Synthetic data with masks
-            images, labels, masks = batch
-        else:
-            # Real data without masks
-            images, labels = batch
-            masks = None
-        
-        # Compute anomaly maps
-        with torch.no_grad():
-            anomaly_maps = self.model.compute_anomaly_map(images, self.image_size)
-        
-        # Store outputs for epoch-end metrics
-        self.test_outputs.append({
-            'anomaly_maps': anomaly_maps.cpu(),
-            'labels': labels.cpu(),
-            'masks': masks.cpu() if masks is not None else None
-        })
-        
-        return {'anomaly_maps': anomaly_maps, 'labels': labels}
+        images, labels = batch
+        teacher_output, student_output, _ = self.model(images)
+        anomaly_map = torch.mean(torch.pow(student_output - teacher_output, 2), dim=1, keepdim=True)
+        score = torch.max(anomaly_map.view(anomaly_map.size(0), -1), dim=1)[0]
+        self.test_outputs.append({'labels': labels.cpu(), 'scores': score.cpu()})
 
     def on_test_epoch_end(self):
-        """Compute test metrics at epoch end"""
         if not self.test_outputs:
             return
+            
+        labels = torch.cat([x['labels'] for x in self.test_outputs])
+        scores = torch.cat([x['scores'] for x in self.test_outputs])
         
-        # Concatenate all outputs
-        all_maps = torch.cat([x['anomaly_maps'] for x in self.test_outputs])
-        all_labels = torch.cat([x['labels'] for x in self.test_outputs])
-        
-        # Compute image-level AUROC
-        image_scores = torch.max(all_maps.view(all_maps.size(0), -1), dim=1)[0]
-        
-        if len(torch.unique(all_labels)) > 1:  # Need both classes for AUROC
-            auroc = roc_auc_score(all_labels.numpy(), image_scores.numpy())
+        if len(torch.unique(labels)) > 1:
+            auroc = roc_auc_score(labels.numpy(), scores.numpy())
             self.log('test/auroc', auroc, prog_bar=True)
         
-        # Compute pixel-level metrics if masks available
-        all_masks = [x['masks'] for x in self.test_outputs if x['masks'] is not None]
-        if all_masks:
-            all_masks = torch.cat(all_masks)
-            # Resize anomaly maps to mask size if needed
-            if all_maps.shape[-2:] != all_masks.shape[-2:]:
-                all_maps = F.interpolate(
-                    all_maps, 
-                    size=all_masks.shape[-2:], 
-                    mode='bilinear', 
-                    align_corners=False
-                )
-            
-            # Flatten for pixel-level evaluation
-            pixel_scores = all_maps.view(-1).numpy()
-            pixel_labels = all_masks.view(-1).numpy()
-            
-            if len(np.unique(pixel_labels)) > 1:
-                pixel_auroc = roc_auc_score(pixel_labels, pixel_scores)
-                self.log('test/pixel_auroc', pixel_auroc)
-        
-        # Clear outputs
         self.test_outputs.clear()
-    
+
     def configure_optimizers(self):
-        """Configure Adam optimizer"""
-        optimizer = torch.optim.Adam(
-            [p for p in self.model.parameters() if p.requires_grad],
-            lr=self.hparams.learning_rate
-        )
-        
-        # Optional: Add learning rate scheduler
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=100, eta_min=1e-6
-        )
-        
-        return {
-            'optimizer': optimizer,
-            'lr_scheduler': scheduler,
-            'monitor': 'val/auroc'
-        }
-    
-    def _generate_imagenet_batch(self, batch_size: int) -> torch.Tensor:
-        """Generate synthetic ImageNette batch for pretraining penalty"""
-        # For now, generate random images
-        # In practice, load actual ImageNette data
-        device = next(self.model.parameters()).device
-        synthetic_batch = torch.randn(
-            batch_size, 3, *self.image_size, 
-            device=device
-        )
-        
-        # Apply normalization to match ImageNet statistics
-        mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(device)
-        std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(device)
-        synthetic_batch = synthetic_batch * std + mean
-        
-        return synthetic_batch
-    
-    def predict_anomaly(self, image: torch.Tensor) -> Tuple[torch.Tensor, float]:
-        """Predict anomaly for a single image"""
-        self.eval()
-        with torch.no_grad():
-            if image.dim() == 3:
-                image = image.unsqueeze(0)  # Add batch dimension
-            
-            anomaly_map = self.model.compute_anomaly_map(image, self.image_size)
-            anomaly_score = torch.max(anomaly_map).item()
-            
-            return anomaly_map.squeeze(0), anomaly_score
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.hparams.learning_rate)
+        return optimizer
