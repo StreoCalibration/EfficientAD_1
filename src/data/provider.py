@@ -53,16 +53,15 @@ class RealDataset(Dataset):
 
         # 훈련용 변환: 1채널 흑백 이미지용
         self.train_transform = transforms.Compose([
-            PadAndResizeToSize(self.image_size),  # Resize 대신 패딩 변환 사용
+            PadAndResizeToSize(self.image_size),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5], std=[0.5])
         ])
         
-        # 테스트용 변환: 3채널 RGB 이미지용
-        self.test_transform = transforms.Compose([
-            PadAndResizeToSize(self.image_size),  # Resize 대신 패딩 변환 사용
+        # 테스트용 변환: 패딩 및 텐서 변환까지만 수행
+        self.test_base_transform = transforms.Compose([
+            PadAndResizeToSize(self.image_size),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
 
     def _get_image_files(self) -> List[str]:
@@ -110,14 +109,24 @@ class RealDataset(Dataset):
             stacked_image = torch.cat(images, dim=0)
             # 훈련/검증 데이터는 모두 정상(good)이므로 라벨 0을 반환
             return stacked_image, 0
-        else:
+        else: # test
             image_path = self.image_files[idx]
-            image = Image.open(image_path).convert('RGB')
-            image = self.test_transform(image)
+            # 테스트 이미지는 흑백으로 변환
+            image = Image.open(image_path).convert('L')
+            
+            # 패딩, 텐서 변환 적용
+            image_tensor = self.test_base_transform(image) # 결과: [1, H, W]
+
+            # 1채널 이미지를 9번 복제하여 9채널로 만듦
+            image_tensor = image_tensor.repeat(9, 1, 1)
+
+            # 정규화 적용 (훈련 시 사용된 흑백 정규화 값 사용)
+            normalizer = transforms.Normalize(mean=[0.5] * 9, std=[0.5] * 9)
+            image_tensor = normalizer(image_tensor)
 
             label_str = os.path.basename(os.path.dirname(image_path))
             label = 0 if label_str == 'good' else 1
-            return image, label
+            return image_tensor, label
 
 
 class RealDatasetProvider(pl.LightningDataModule):
